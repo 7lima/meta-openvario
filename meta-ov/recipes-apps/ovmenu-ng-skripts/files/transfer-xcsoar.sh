@@ -30,7 +30,10 @@ sync&
 USB_PATH=/usb/usbstick
 
 # XCSoar settings path
-XCSOAR_PATH=/home/root/.xcsoar
+export XCSOAR_PATH=/home/root/.xcsoar
+
+# XCSoar upload path
+XCSOAR_UPLOAD_PATH=openvario/upload/xcsoar
 
 # Backup path within the USB stick
 BACKUP=openvario/backup
@@ -77,6 +80,23 @@ backup-system.sh)
 		else echo disabled  
 		fi > /home/root/$DAEMON-status
 	done
+	
+	# Store if profiles are protected or not
+	if opkg list-installed | grep "e2fsprogs" > /dev/null; 
+	then
+	PROFILE= find "$XCSOAR_PATH" -maxdepth 1 -type f -name '*.prf' -exec sh -c '
+	for PROFILE; 
+	do
+		mkdir -p /home/root/profile-settings
+		PROFILE_FILE=`basename "$PROFILE"`
+		PROFILE_NAME=${PROFILE_FILE%.*}
+		if lsattr "$PROFILE" | cut -b 5 | fgrep -q i; 
+		then echo protected
+		else echo unprotected
+		fi > /home/root/profile-settings/$PROFILE_NAME 
+	done
+	' -- {} +
+	fi
 
 	# Copy brightness setting
 	cat /sys/class/backlight/lcd/brightness > /home/root/brightness
@@ -104,6 +124,21 @@ backup-system.sh)
 	else 
 		>&2 echo " An rsync error $RSYNC_EXIT has occurred!"
 	fi;;
+	
+upload-xcsoar.sh)
+	echo ' [##========] Starting upload of XCSoar files ...'
+	# Call Shell Function defined above
+	if 
+		# We use --checksum here due to cubieboards not having an rtc clock
+		rsync --recursive --mkpath --checksum --quiet --progress "$USB_PATH/$XCSOAR_UPLOAD_PATH"/ "$XCSOAR_PATH"
+		test ${RSYNC_EXIT:=$?} -eq 0
+	then
+		echo " [####======] All XCSoar files have been uploaded."
+	else 
+		>&2 echo " An rsync error $RSYNC_EXIT has occurred!"
+	fi
+	# Provident system buffer sync to help later syncs finish quicker
+	sync&;;
 	
 restore-xcsoar.sh)
 	echo ' [##========] Starting restore of XCSoar ...'
@@ -144,16 +179,48 @@ restore-system.sh)
 		esac
 	done
 
+	# Restore protection for profiles if necessary
+	if opkg list-installed | grep "e2fsprogs" > /dev/null; 
+	then
+		PROFILE= find "$XCSOAR_PATH" -maxdepth 1 -type f -name '*.prf' -exec sh -c '
+		for PROFILE; 
+		do
+			PROFILE_FILE=`basename "$PROFILE"`
+			PROFILE_NAME=${PROFILE_FILE%.*}
+			case `cat /home/root/profile-settings/"$PROFILE_NAME"` in
+			protected)   chattr +i "$XCSOAR_PATH"/"$PROFILE_NAME.prf"
+		 	             echo " [######====] $PROFILE_NAME.prf has been protected.";;
+			unprotected) echo " [######====] $PROFILE_NAME.prf is still unprotected.";;
+			esac
+		done
+		' -- {} +
+	else 
+		PROFILE= find "$XCSOAR_PATH" -maxdepth 1 -type f -name '*.prf' -exec sh -c '
+		for PROFILE; 
+		do
+			PROFILE_FILE=`basename "$PROFILE"`
+			PROFILE_NAME=${PROFILE_FILE%.*}
+			case `cat /home/root/profile-settings/"$PROFILE_NAME"` in
+			protected)  echo ' You try to protect $PROFILE_NAME.prf, but chattr is not installed!';;
+			esac
+		done
+		' -- {} +
+	fi
+
 	# Restore brightness setting
 	cat /home/root/brightness > /sys/class/backlight/lcd/brightness
-	echo " [######====] brightness setting has been restored.";;
+	echo " [#######===] brightness setting has been restored."
+	
+	# Restore rotation setting
+	grep "rotation" /boot/config.uEnv | cut -d '=' -f 2 > /sys/class/graphics/fbcon/rotate
+	echo " [########==] rotation setting has been restored.";;
 *)
-	>&2 echo 'call as backup-system.sh, restore-xcsoar.sh or restore-system.sh'
+	>&2 echo 'call as backup-system.sh, upload-xcsoar.sh, restore-xcsoar.sh or restore-system.sh'
 	exit 1;;
 esac
 
 # Sync the system buffer to make sure all data is on disk
-echo ' [#######===] Please wait a moment, synchronization is not yet complete!'
+echo ' [#########=] Please wait a moment, synchronization is not yet complete!'
 sync
 echo ' [##########] DONE !! ---------------------------------------------------'
 exit $RSYNC_EXIT
