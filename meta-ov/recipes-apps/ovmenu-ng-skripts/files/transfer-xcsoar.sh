@@ -88,12 +88,11 @@ backup-system.sh)
 	for PROFILE; 
 	do
 		mkdir -p /home/root/profile-settings
-		PROFILE_FILE=`basename "$PROFILE"`
-		PROFILE_NAME=${PROFILE_FILE%.*}
+		PROFILE_SETTINGS=`basename "$PROFILE"`
 		if lsattr "$PROFILE" | cut -b 5 | fgrep -q i; 
 		then echo protected
 		else echo unprotected
-		fi > /home/root/profile-settings/$PROFILE_NAME 
+		fi > /home/root/profile-settings/$PROFILE_SETTINGS 
 	done
 	' -- {} +
 	fi
@@ -185,12 +184,11 @@ restore-system.sh)
 		PROFILE= find "$XCSOAR_PATH" -maxdepth 1 -type f -name '*.prf' -exec sh -c '
 		for PROFILE; 
 		do
-			PROFILE_FILE=`basename "$PROFILE"`
-			PROFILE_NAME=${PROFILE_FILE%.*}
-			case `cat /home/root/profile-settings/"$PROFILE_NAME"` in
-			protected)   chattr +i "$XCSOAR_PATH"/"$PROFILE_NAME.prf"
-		 	             echo " [######====] $PROFILE_NAME.prf has been protected.";;
-			unprotected) echo " [######====] $PROFILE_NAME.prf is still unprotected.";;
+			PROFILE_SETTINGS=`basename "$PROFILE"`
+			case `cat /home/root/profile-settings/"$PROFILE_SETTINGS"` in
+			protected)   chattr +i "$XCSOAR_PATH"/"$PROFILE_SETTINGS"
+		 	             echo " [######====] $PROFILE_SETTINGS has been protected.";;
+			unprotected) echo " [######====] $PROFILE_SETTINGS is still unprotected.";;
 			esac
 		done
 		' -- {} +
@@ -198,10 +196,8 @@ restore-system.sh)
 		PROFILE= find "$XCSOAR_PATH" -maxdepth 1 -type f -name '*.prf' -exec sh -c '
 		for PROFILE; 
 		do
-			PROFILE_FILE=`basename "$PROFILE"`
-			PROFILE_NAME=${PROFILE_FILE%.*}
-			case `cat /home/root/profile-settings/"$PROFILE_NAME"` in
-			protected)  echo ' You try to protect $PROFILE_NAME.prf, but chattr is not installed!';;
+			case `cat /home/root/profile-settings/"$PROFILE_SETTINGS"` in
+			protected)  echo ' You try to protect $PROFILE_SETTINGS, but chattr is not installed!';;
 			esac
 		done
 		' -- {} +
